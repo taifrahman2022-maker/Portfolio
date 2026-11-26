@@ -1,0 +1,86 @@
+import {useCallback, useEffect, useMemo, useState} from "react";
+import {Activity, AlertTriangle, CheckCircle2, ClipboardList, MapPin, Menu, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Wrench, X} from "lucide-react";
+import {getIssues, postIssue, patchStatus, classifyImage} from "./api.js";
+import Staff from "./Staff.jsx";
+import TrackIssue from "./TrackIssue.jsx";
+
+const demo = [
+ {id:"demo1",title:"Air conditioner leaking",description:"Water is dripping near the classroom entrance.",category:"Facility",priority:"Medium",status:"In Progress",location:"Engineering Building · Room 204",department:"Facilities Maintenance",created_at:new Date().toISOString()},
+ {id:"demo2",title:"Exposed electrical wire",description:"A wire appears exposed near a hallway wall.",category:"Electrical",priority:"High",status:"Submitted",location:"Library · 1st floor",department:"Electrical Maintenance",created_at:new Date().toISOString()},
+ {id:"demo3",title:"Overflowing waste bin",description:"The waste bin needs collection.",category:"Cleaning",priority:"Low",status:"Resolved",location:"Student Center",department:"Cleaning Services",created_at:new Date().toISOString()}
+];
+const empty = {title:"",description:"",category:"Other",location:"",image_data:null};
+function Stat({label,value,note,Icon}) { return <article className="stat"><div className="stat-label">{label}<Icon size={18}/></div><div className="stat-value">{value}</div><div className="stat-note">{note}</div></article>; }
+
+export default function App() {
+     const [isOnline, setIsOnline] = useState(navigator.onLine);
+     const [connectionMessage, setConnectionMessage] = useState("");
+
+
+ useEffect(() => {
+  let active = true;
+  let wasOnline = navigator.onLine;
+
+  const checkConnection = async () => {
+   try {
+    const response = await fetch(
+     "https://www.google.com/generate_204",
+     { method: "GET", mode: "no-cors", cache: "no-store" }
+    );
+
+    if (active) {
+     setIsOnline(true);
+     if (!wasOnline) {
+      setConnectionMessage("Internet connection restored.");
+     }
+     wasOnline = true;
+    }
+   } catch {
+    if (active) {
+     setIsOnline(false);
+     setConnectionMessage("You are offline. Check your internet connection.");
+     wasOnline = false;
+    }
+   }
+  };
+
+  const handleOnline = () => checkConnection();
+  const handleOffline = () => checkConnection();
+
+  window.addEventListener("online", handleOnline);
+  window.addEventListener("offline", handleOffline);
+
+  checkConnection();
+  const interval = setInterval(checkConnection, 10000);
+
+  return () => {
+   active = false;
+   clearInterval(interval);
+   window.removeEventListener("online", handleOnline);
+   window.removeEventListener("offline", handleOffline);
+  };
+ }, []);
+
+ const [issues,setIssues]=useState(demo),[live,setLive]=useState(false),[notice,setNotice]=useState("Demo mode: connect the backend to save reports."),[query,setQuery]=useState(""),[modal,setModal]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(""),[form,setForm]=useState(empty),[view,setView]=useState("overview"),[imageAnalysis,setImageAnalysis]=useState({status:"idle",message:""}),[mobileNavOpen,setMobileNavOpen]=useState(false),[lastTrackingCode,setLastTrackingCode]=useState("");
+ const refresh=useCallback(async()=>{try{setIssues(await getIssues());setLive(true);setNotice("Connected: reports are loaded from the database.");setError("");}catch{setLive(false);setNotice("Backend unavailable. Demo records are shown; submissions will not be saved.");}},[]);
+ useEffect(()=>{refresh();},[refresh]);
+ const filtered=useMemo(()=>issues.filter(i=>[i.title,i.description,i.category,i.location,i.status,i.department].filter(Boolean).join(" ").toLowerCase().includes(query.toLowerCase())),[issues,query]);
+ const open=issues.filter(i=>!["resolved","closed"].includes((i.status||"").toLowerCase())).length;
+ const high=issues.filter(i=>(i.priority||"").toLowerCase()==="high").length;
+ const resolved=issues.filter(i=>["resolved","closed"].includes((i.status||"").toLowerCase())).length;
+ async function submit(e){e.preventDefault();setBusy(true);setError("");try{const saved=await postIssue(form);setIssues(old=>[saved,...old.filter(i=>typeof i.id==="number")]);setLive(true);setNotice("Report saved to the database.");setLastTrackingCode(saved.tracking_code||"");setForm(empty);setImageAnalysis({status:"idle",message:""});setModal(false);}catch{setError("Could not save. Check that the backend is running and connected to the database.");}finally{setBusy(false);}}
+ async function update(id,status,token){const item=await patchStatus(id,status,token);setIssues(old=>old.map(i=>i.id===id?item:i));setNotice(`Report #${id} updated to ${status}.`);return item;}
+ return <div className="layout">
+  <aside className="sidebar"><div className="brand"><div className="brand-icon"><Activity size={22}/></div><div><strong>INNOVEXA</strong><span>SMART CAMPUS</span></div></div><button className="mobile-menu-toggle" type="button" aria-expanded={mobileNavOpen} aria-controls="mobile-workspace-nav" onClick={()=>setMobileNavOpen(open=>!open)}><Menu size={18}/><span>Menu</span></button><nav className={`side-nav ${mobileNavOpen?"open":""}`} id="mobile-workspace-nav" aria-label="Workspace navigation"><div className="side-label">WORKSPACE</div><button className={`side-link ${view==="overview"?"selected":""}`} onClick={()=>{setView("overview");setMobileNavOpen(false);}}><ClipboardList size={18}/>Issue overview</button><button className={`side-link ${view==="staff"?"selected":""}`} onClick={()=>{setView("staff");setMobileNavOpen(false);}}><Wrench size={18}/>Staff tasks</button><button className={`side-link ${view==="tracking"?"selected":""}`} onClick={()=>{setView("tracking");setMobileNavOpen(false);}}><Search size={18}/>Track a report</button><button className="side-link" onClick={()=>{setModal(true);setMobileNavOpen(false);}}><Plus size={18}/>Report an issue</button></nav><div className="side-bottom"><div className="safety"><ShieldCheck size={20}/><strong>Campus care</strong><p>For immediate danger, contact campus security or emergency services directly. This prototype is not an emergency-response system.</p></div><div className="team-chip"><div className="team-avatar">IX</div><div><b>Project preview</b><span>Team INNOVEXA</span></div></div></div></aside>
+  <main className="main"><header className="header"><div><div className="eyebrow">CAMPUS OPERATIONS</div><h1>Issue overview</h1></div><div className="header-actions"><span className={`connection ${live?"connected":""}`}><i/>{live?"Backend connected":"Demo mode"}</span><button className="btn btn-primary" onClick={()=>setModal(true)}><Plus size={16}/>Report issue</button></div></header>
+   <section className="hero"><div><div className="hero-kicker"><Sparkles size={14}/>SMART CAMPUS FACILITY MANAGEMENT</div><h2>A better campus starts with a report.</h2><p>Submit facility issues, track progress, and keep campus operations organized.</p></div><div className="hero-art"><Activity size={40}/></div></section>
+   {connectionMessage&&<div className={`notice ${isOnline?"notice-ok":""}`} role={isOnline?"status":"alert"}>{connectionMessage}</div>}
+   <div className={`notice ${live?"notice-ok":""}`} role="status">{notice}</div>{lastTrackingCode&&<div className="tracking-confirmation"><div><strong>Your report tracking code</strong><span>Save this code to check progress later.</span></div><code>{lastTrackingCode}</code><button className="btn btn-light" onClick={()=>{navigator.clipboard?.writeText(lastTrackingCode);}}>Copy code</button><button className="btn btn-light" onClick={()=>setView("tracking")}>Track report</button></div>}{error&&<div className="error-banner" role="alert">{error}<button onClick={()=>setError("")} aria-label="Dismiss"><X size={15}/></button></div>}
+   {view==="staff"?<Staff issues={issues} live={live} onUpdate={update}/>:view==="tracking"?<TrackIssue initialCode={lastTrackingCode}/>:<><section className="stats"><Stat label="Total reports" value={issues.length} note="All visible records" Icon={ClipboardList}/><Stat label="Open issues" value={open} note="Awaiting resolution" Icon={AlertTriangle}/><Stat label="High priority" value={high} note="Requires attention" Icon={Activity}/><Stat label="Resolved" value={resolved} note="Completed reports" Icon={CheckCircle2}/></section>
+   <section className="reports"><div className="reports-head"><div><h2>Campus reports</h2><p>Search, review, and update issue status.</p></div><button className="btn btn-light" onClick={refresh}><RefreshCw size={15}/>Refresh</button></div><div className="toolbar"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search reports, categories, locations…" aria-label="Search reports"/></div><span>{filtered.length} reports</span></div>
+   <div className="issue-list">{filtered.map(i=><article className="issue-row" key={i.id}><div className="issue-main"><div className="issue-title-line"><h3>{i.title}</h3><span className={`priority priority-${(i.priority||"Medium").toLowerCase()}`}>{i.priority} priority</span></div><p>Report details are available to authorized staff.</p>{typeof i.classification_confidence==="number"&&<div className="ai-note">ML category confidence: {(i.classification_confidence*100).toFixed(0)}% · Review suggested category</div>}<div className="meta"><span><Wrench size={14}/>{i.department||"Department pending"}</span><span>{i.created_at?new Date(i.created_at).toLocaleDateString():"Demo record"}</span></div></div><div className="issue-side"><span className="category">{i.category}</span><span className={`status status-${(i.status||"").toLowerCase().replaceAll(" ","-")}`}>{i.status}</span><span className={`status risk-${(i.risk_level||"Low").toLowerCase()}`}>Risk: {i.risk_level||"Low"}</span></div></article>)}</div>{filtered.length===0&&<div className="empty">No matching reports.</div>}</section></>}
+   <footer>INNOVEXA · Smart Campus Facility and Issue Management System <span>Capstone prototype</span></footer>
+  </main>
+  {modal&&<div className="backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModal(false);}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div className="modal-head"><div><div className="eyebrow">NEW CAMPUS REPORT</div><h2 id="modal-title">Report an issue</h2></div><button className="close" onClick={()=>setModal(false)} aria-label="Close">×</button></div><form className="form" onSubmit={submit}><label>Issue title<input required minLength="3" maxLength="120" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Broken classroom light"/></label><label>Description<textarea required minLength="5" maxLength="3000" rows="4" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Describe the issue and where it happened."/></label><div className="form-grid"><label>Category<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}><option>Other</option><option>Facility</option><option>Electrical</option><option>Plumbing</option><option>Cleaning</option><option>Safety</option></select></label><label>Location<input required minLength="2" maxLength="180" value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="Building, floor, room"/></label></div><label className="upload-label">Attach a photo (optional)<input type="file" accept="image/png,image/jpeg,image/webp" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>2*1024*1024){setError("Please choose an image smaller than 2 MB.");e.target.value="";return;}const reader=new FileReader();reader.onload=async()=>{const imageData=reader.result;setForm(old=>({...old,image_data:imageData}));setImageAnalysis({status:"loading",message:"Analyzing photo…"});try{const result=await classifyImage(imageData);setForm(old=>({...old,category:result.category}));setImageAnalysis({status:"success",message:`AI suggests ${result.category} (${Math.round(result.score*100)}% match). You can change the category below.`});}catch(err){setImageAnalysis({status:"unavailable",message:err.message||"Image recognition unavailable. Choose the category manually."});}};reader.readAsDataURL(file);}}/></label>{form.image_data&&<div className="image-preview-wrap"><img className="image-preview" src={form.image_data} alt="Selected report attachment"/><button type="button" className="btn btn-light" onClick={()=>{setForm(old=>({...old,image_data:null}));setImageAnalysis({status:"idle",message:""});}}>Remove photo</button></div>}{imageAnalysis.message&&<div className={`image-analysis image-analysis-${imageAnalysis.status}`} role="status">{imageAnalysis.status==="loading"&&"◌ "}{imageAnalysis.message}</div>}<p className="form-note">AI image recognition can suggest a category from the uploaded photo. A machine-learning text classifier also analyzes the written report. You can change the suggested category. Priority is estimated using safety keywords. A separate keyword-based risk score is a triage hint, not validated AI or emergency detection. Staff must review all reports.</p><div className="form-actions"><button type="button" className="btn btn-light" onClick={()=>setModal(false)}>Cancel</button><button className="btn btn-primary" disabled={busy}>{busy?"Saving…":"Submit report"}</button></div></form></section></div>}
+ </div>;
+}

@@ -1,0 +1,56 @@
+name: Backend checks
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/backend-checks.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/backend-checks.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install backend dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run regression tests
+        run: python -m pytest -q
+      - name: Run classifier holdout evaluation
+        run: python -m app.evaluate_classifier
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Generate dependency lockfile
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Run frontend interaction tests
+        run: npm test
+      - name: Build frontend
+        run: npm run build
